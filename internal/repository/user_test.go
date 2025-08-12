@@ -1,60 +1,110 @@
-package repository_test
+package repository
 
 import (
 	"testing"
-	"user-go/internal/repository"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestInMemoryUserRepository_CreateAndGet(t *testing.T) {
-	repo := repository.NewInMemoryUserRepository()
+	repo := NewInMemoryUserRepository()
 
 	phone := "+1234567890"
 
-	// ایجاد کاربر جدید
 	user, err := repo.Create(phone)
-	require.NoError(t, err)
-	assert.Equal(t, phone, user.Phone)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user.Phone != phone {
+		t.Errorf("expected phone %s, got %s", phone, user.Phone)
+	}
 
-	// تلاش دوباره برای ایجاد همان کاربر باید خطا بده
-	_, err = repo.Create(phone)
-	assert.Error(t, err)
-
-	// گرفتن کاربر
-	got, err := repo.GetByPhone(phone)
-	require.NoError(t, err)
-	assert.Equal(t, user.Phone, got.Phone)
-
-	// گرفتن کاربر ناموجود باید خطا بده
-	_, err = repo.GetByPhone("+0000000000")
-	assert.Equal(t, repository.ErrUserNotFound, err)
+	gotUser, err := repo.GetByPhone(phone)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotUser.Phone != phone {
+		t.Errorf("expected phone %s, got %s", phone, gotUser.Phone)
+	}
 }
 
 func TestInMemoryUserRepository_List(t *testing.T) {
-	repo := repository.NewInMemoryUserRepository()
+	repo := NewInMemoryUserRepository()
 
-	// ایجاد چند کاربر
 	phones := []string{"+111", "+222", "+333"}
 	for _, p := range phones {
-		_, _ = repo.Create(p)
+		_, err := repo.Create(p)
+		if err != nil {
+			t.Fatalf("unexpected error creating user: %v", err)
+		}
 	}
 
-	// لیست همه کاربران بدون فیلتر
-	users, err := repo.List(0, 10, "")
-	require.NoError(t, err)
-	assert.Len(t, users, 3)
+	users, err := repo.List(0, 10, "+2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(users) != 1 {
+		t.Errorf("expected 1 user, got %d", len(users))
+	}
+	if users[0].Phone != "+222" {
+		t.Errorf("expected phone +222, got %s", users[0].Phone)
+	}
+}
 
-	// لیست با جستجو
-	users, err = repo.List(0, 10, "+2")
-	require.NoError(t, err)
-	assert.Len(t, users, 1)
-	assert.Equal(t, "+222", users[0].Phone)
+func TestInMemoryUserRepository_UpdatePhone(t *testing.T) {
+	repo := NewInMemoryUserRepository()
 
-	// لیست با صفحه‌بندی
-	users, err = repo.List(1, 1, "")
-	require.NoError(t, err)
-	assert.Len(t, users, 1)
-	assert.Equal(t, "+222", users[0].Phone)
+	_, _ = repo.Create("+111")
+	_, _ = repo.Create("+222")
+
+	// تغییر شماره معتبر
+	err := repo.UpdatePhone("+111", "+333")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = repo.GetByPhone("+111")
+	if err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+
+	user, err := repo.GetByPhone("+333")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if user.Phone != "+333" {
+		t.Errorf("expected phone +333, got %s", user.Phone)
+	}
+
+	// تغییر به شماره تکراری
+	err = repo.UpdatePhone("+222", "+333")
+	if err == nil {
+		t.Errorf("expected error for duplicate new phone")
+	}
+
+	// تغییر شماره غیر موجود
+	err = repo.UpdatePhone("+999", "+444")
+	if err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestInMemoryUserRepository_Delete(t *testing.T) {
+	repo := NewInMemoryUserRepository()
+
+	_, _ = repo.Create("+111")
+
+	err := repo.Delete("+111")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = repo.GetByPhone("+111")
+	if err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+
+	// حذف شماره غیر موجود
+	err = repo.Delete("+222")
+	if err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
 }

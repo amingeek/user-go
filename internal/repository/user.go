@@ -2,7 +2,6 @@ package repository
 
 import (
 	"errors"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +16,8 @@ type UserRepository interface {
 	GetByPhone(phone string) (*User, error)
 	Create(phone string) (*User, error)
 	List(offset, limit int, search string) ([]User, error)
+	UpdatePhone(oldPhone, newPhone string) error
+	Delete(phone string) error
 }
 
 var ErrUserNotFound = errors.New("user not found")
@@ -30,17 +31,6 @@ func NewInMemoryUserRepository() *InMemoryUserRepository {
 	return &InMemoryUserRepository{
 		users: make(map[string]User),
 	}
-}
-
-func (r *InMemoryUserRepository) GetByPhone(phone string) (*User, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	user, exists := r.users[phone]
-	if !exists {
-		return nil, ErrUserNotFound
-	}
-	return &user, nil
 }
 
 func (r *InMemoryUserRepository) Create(phone string) (*User, error) {
@@ -60,6 +50,17 @@ func (r *InMemoryUserRepository) Create(phone string) (*User, error) {
 	return &user, nil
 }
 
+func (r *InMemoryUserRepository) GetByPhone(phone string) (*User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	user, exists := r.users[phone]
+	if !exists {
+		return nil, ErrUserNotFound
+	}
+	return &user, nil
+}
+
 func (r *InMemoryUserRepository) List(offset, limit int, search string) ([]User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -73,12 +74,7 @@ func (r *InMemoryUserRepository) List(offset, limit int, search string) ([]User,
 		}
 	}
 
-	// مرتب‌سازی خروجی بر اساس شماره تلفن به صورت صعودی
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Phone < result[j].Phone
-	})
-
-	// اعمال صفحه‌بندی
+	// صفحه‌بندی
 	start := offset
 	if start > len(result) {
 		start = len(result)
@@ -89,4 +85,35 @@ func (r *InMemoryUserRepository) List(offset, limit int, search string) ([]User,
 	}
 
 	return result[start:end], nil
+}
+
+func (r *InMemoryUserRepository) UpdatePhone(oldPhone, newPhone string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	user, exists := r.users[oldPhone]
+	if !exists {
+		return ErrUserNotFound
+	}
+
+	if _, exists := r.users[newPhone]; exists {
+		return errors.New("new phone already exists")
+	}
+
+	delete(r.users, oldPhone)
+	user.Phone = newPhone
+	r.users[newPhone] = user
+	return nil
+}
+
+func (r *InMemoryUserRepository) Delete(phone string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.users[phone]; !exists {
+		return ErrUserNotFound
+	}
+
+	delete(r.users, phone)
+	return nil
 }
