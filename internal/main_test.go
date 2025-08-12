@@ -1,13 +1,17 @@
 package internal_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 	"user-go/internal/cache"
 	"user-go/internal/handler"
 	"user-go/internal/middleware"
@@ -18,21 +22,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupRouter() *gin.Engine {
-	r := gin.Default()
+func setupRouterWithPostgres(t *testing.T) *gin.Engine {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set, skipping Postgres integration test")
+	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dsn)
+	require.NoError(t, err, "failed to connect to Postgres")
+
+	userRepo := repository.NewPostgresUserRepository(pool)
 	cache := cache.NewInMemoryCache()
-	userRepo := repository.NewInMemoryUserRepository()
-	otpService := service.NewOtpService(cache, userRepo, "testsecretkey")
+	secretKey := "secretKey"
+
+	otpService := service.NewOtpService(cache, userRepo, secretKey)
 
 	authHandler := handler.NewAuthHandler(otpService)
 	userHandler := handler.NewUserHandler(userRepo)
+
+	r := gin.Default()
 
 	r.POST("/auth/request-otp", authHandler.RequestOTP)
 	r.POST("/auth/validate-otp", authHandler.ValidateOTP)
 
 	authGroup := r.Group("/")
-	authGroup.Use(middleware.JWTAuthMiddleware([]byte("testsecretkey")))
+	authGroup.Use(middleware.JWTAuthMiddleware([]byte(secretKey)))
 	{
 		authGroup.GET("/profile", userHandler.GetProfile)
 	}
@@ -40,12 +57,12 @@ func setupRouter() *gin.Engine {
 	return r
 }
 
-func TestEndToEnd(t *testing.T) {
-	r := setupRouter() // تابعی که router اصلی رو با همه چیز راه اندازی میکنه
+func TestEndToEndPostgres(t *testing.T) {
+	r := setupRouterWithPostgres(t)
 
-	phone := "+1234567890"
+	phone := "+19998887777"
 
-	// درخواست OTP
+	// 1. Request OTP
 	reqBody := strings.NewReader(fmt.Sprintf(`{"phone":"%s"}`, phone))
 	req := httptest.NewRequest("POST", "/auth/request-otp", reqBody)
 	req.Header.Set("Content-Type", "application/json")
@@ -59,7 +76,7 @@ func TestEndToEnd(t *testing.T) {
 	otp := otpResp["otp"]
 	require.NotEmpty(t, otp)
 
-	// اعتبارسنجی OTP و دریافت توکن JWT
+	// 2. Validate OTP → Get token
 	reqBody = strings.NewReader(fmt.Sprintf(`{"phone":"%s", "otp":"%s"}`, phone, otp))
 	req = httptest.NewRequest("POST", "/auth/validate-otp", reqBody)
 	req.Header.Set("Content-Type", "application/json")
@@ -73,7 +90,7 @@ func TestEndToEnd(t *testing.T) {
 	token := valResp["token"]
 	require.NotEmpty(t, token)
 
-	// درخواست پروفایل با هدر Authorization
+	// 3. Request profile
 	req = httptest.NewRequest("GET", "/profile", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	w = httptest.NewRecorder()

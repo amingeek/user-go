@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"log"
 	"os"
 	"time"
@@ -13,10 +12,15 @@ import (
 	"user-go/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
-	dsn := os.Getenv("DATABASE_URL") // مثل postgres://user:pass@localhost:5432/dbname
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Fatal("DATABASE_URL environment variable is not set")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -27,20 +31,22 @@ func main() {
 	defer pool.Close()
 
 	userRepo := repository.NewPostgresUserRepository(pool)
-
-	r := gin.Default()
-
 	cache := cache.NewInMemoryCache()
-	otpService := service.NewOtpService(cache, userRepo, "mysecretjwtkey")
+
+	secretKey := "secretKey"
+
+	otpService := service.NewOtpService(cache, userRepo, secretKey)
 
 	authHandler := handler.NewAuthHandler(otpService)
 	userHandler := handler.NewUserHandler(userRepo)
+
+	r := gin.Default()
 
 	r.POST("/auth/request-otp", authHandler.RequestOTP)
 	r.POST("/auth/validate-otp", authHandler.ValidateOTP)
 
 	authGroup := r.Group("/")
-	authGroup.Use(middleware.JWTAuthMiddleware([]byte("mysecretjwtkey")))
+	authGroup.Use(middleware.JWTAuthMiddleware([]byte(secretKey)))
 	{
 		authGroup.GET("/profile", userHandler.GetProfile)
 		authGroup.GET("/users/:phone", userHandler.GetUser)
@@ -49,5 +55,6 @@ func main() {
 		authGroup.DELETE("/users/:phone", userHandler.DeleteUser)
 	}
 
+	log.Println("Server is running on :8080")
 	r.Run(":8080")
 }

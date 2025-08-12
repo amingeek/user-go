@@ -62,7 +62,7 @@ func TestRequestOTP_RateLimited(t *testing.T) {
 
 	mc.On("IncrWithExpire", "otp_req:"+phone, 600).Return(4, nil)
 
-	svc := service.NewOtpService(mc, nil, "testsecret")
+	svc := service.NewOtpService(mc, nil, "mysecretjwtkey")
 	_, err := svc.RequestOTP(phone)
 	assert.Error(t, err)
 	assert.Equal(t, service.ErrRateLimited, err)
@@ -79,7 +79,7 @@ func TestValidateOTP_NewUser(t *testing.T) {
 	mc.On("Get", otpKey).Return("123456", nil)
 	mc.On("Delete", otpKey).Return(nil)
 
-	service := service.NewOtpService(mc, users, "testsecret")
+	service := service.NewOtpService(mc, users, "mysecretjwtkey")
 
 	token, err := service.ValidateOTP(phone, "123456")
 	require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestValidateOTP_Invalid(t *testing.T) {
 	cache := cache.NewInMemoryCache()
 	users := repository.NewInMemoryUserRepository()
 
-	service := service.NewOtpService(cache, users, "testsecret")
+	service := service.NewOtpService(cache, users, "mysecretjwtkey")
 
 	phone := "09120000000"
 	_, _ = service.RequestOTP(phone)
