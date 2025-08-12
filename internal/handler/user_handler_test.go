@@ -12,74 +12,43 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupRouterWithUserHandler(userRepo repository.UserRepository) *gin.Engine {
+func setupUserRouter(repo repository.UserRepository) *gin.Engine {
 	r := gin.Default()
-	userHandler := handler.NewUserHandler(userRepo)
-
-	r.GET("/users/:phone", userHandler.GetUser)
+	userHandler := handler.NewUserHandler(repo)
 	r.GET("/users", userHandler.ListUsers)
-
 	return r
 }
 
-func TestGetUser_Success(t *testing.T) {
-	userRepo := repository.NewInMemoryUserRepository()
-	userRepo.Create("+1234567890")
+func TestListUsersHandler(t *testing.T) {
+	// ایجاد ریپوزیتوری و اضافه کردن چند کاربر
+	repo := repository.NewInMemoryUserRepository()
+	_, _ = repo.Create("+111")
+	_, _ = repo.Create("+222")
+	_, _ = repo.Create("+333")
 
-	router := setupRouterWithUserHandler(userRepo)
+	r := setupUserRouter(repo)
 
-	req, _ := http.NewRequest("GET", "/users/+1234567890", nil)
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
+	req := httptest.NewRequest(http.MethodGet, "/users?offset=1&limit=2", nil)
+	w := httptest.NewRecorder()
 
-	assert.Equal(t, http.StatusOK, resp.Code)
+	r.ServeHTTP(w, req)
 
-	var data map[string]interface{}
-	err := json.Unmarshal(resp.Body.Bytes(), &data)
-	assert.NoError(t, err)
-	assert.Equal(t, "+1234567890", data["phone"])
-}
+	assert.Equal(t, http.StatusOK, w.Code)
 
-func TestGetUser_NotFound(t *testing.T) {
-	userRepo := repository.NewInMemoryUserRepository()
-
-	router := setupRouterWithUserHandler(userRepo)
-
-	req, _ := http.NewRequest("GET", "/users/+0000000000", nil)
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-
-	assert.Equal(t, http.StatusNotFound, resp.Code)
-
-	var data map[string]interface{}
-	err := json.Unmarshal(resp.Body.Bytes(), &data)
-	assert.NoError(t, err)
-	assert.Contains(t, data["error"], "not found")
-}
-
-func TestListUsers(t *testing.T) {
-	userRepo := repository.NewInMemoryUserRepository()
-	userRepo.Create("+111")
-	userRepo.Create("+222")
-	userRepo.Create("+333")
-
-	router := setupRouterWithUserHandler(userRepo)
-
-	req, _ := http.NewRequest("GET", "/users?offset=0&limit=2&search=+2", nil)
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-
-	assert.Equal(t, http.StatusOK, resp.Code)
-
-	var data struct {
-		Users []struct {
-			Phone            string `json:"phone"`
-			RegistrationDate string `json:"registration_date"`
-		} `json:"users"`
+	var users []repository.User
+	err := json.Unmarshal(w.Body.Bytes(), &users)
+	if err != nil {
+		t.Fatalf("failed to parse response: %v", err)
 	}
 
-	err := json.Unmarshal(resp.Body.Bytes(), &data)
-	assert.NoError(t, err)
-	assert.Len(t, data.Users, 1)
-	assert.Equal(t, "+222", data.Users[0].Phone)
+	// انتظار داریم کاربران با ایندکس 1 و 2 رو دریافت کنیم (+222 و +333)
+	phones := []string{}
+	for _, u := range users {
+		phones = append(phones, u.Phone)
+	}
+
+	assert.Contains(t, phones, "+222")
+	assert.Contains(t, phones, "+333")
+	assert.NotContains(t, phones, "+111")
+	assert.Len(t, users, 2)
 }

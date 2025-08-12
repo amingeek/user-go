@@ -16,39 +16,48 @@ func NewUserHandler(userRepo repository.UserRepository) *UserHandler {
 	return &UserHandler{userRepo: userRepo}
 }
 
-func (h *UserHandler) GetUser(c *gin.Context) {
-	phone := c.Param("phone")
+func (h *UserHandler) GetProfile(c *gin.Context) {
+	phoneVal, exists := c.Get("phone")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "phone not found in context"})
+		return
+	}
+
+	phone, ok := phoneVal.(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid phone type"})
+		return
+	}
+
 	user, err := h.userRepo.GetByPhone(phone)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"phone":             user.Phone,
-		"registration_date": user.RegistrationDate,
-	})
+	c.JSON(http.StatusOK, user)
 }
 
 func (h *UserHandler) ListUsers(c *gin.Context) {
-	offsetStr := c.DefaultQuery("offset", "0")
-	limitStr := c.DefaultQuery("limit", "10")
-	search := c.DefaultQuery("search", "")
+	offsetStr := c.Query("offset")
+	limitStr := c.Query("limit")
+	search := c.Query("search")
 
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
+	offset := 0
+	limit := 10
+
+	if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+		offset = o
 	}
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit <= 0 || limit > 100 {
-		limit = 10
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
 	}
 
 	users, err := h.userRepo.List(offset, limit, search)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get users"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list users"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users})
+	c.JSON(http.StatusOK, users)
 }

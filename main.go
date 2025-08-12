@@ -1,8 +1,10 @@
+// main.go (یا هر جایی که gin router ساخته شده)
 package main
 
 import (
 	"user-go/internal/cache"
 	"user-go/internal/handler"
+	"user-go/internal/middleware"
 	"user-go/internal/repository"
 	"user-go/internal/service"
 
@@ -14,19 +16,20 @@ func main() {
 
 	cache := cache.NewInMemoryCache()
 	userRepo := repository.NewInMemoryUserRepository()
-	otpService := service.NewOtpService(cache, userRepo, "your_jwt_secret_here")
+	otpService := service.NewOtpService(cache, userRepo, "mysecretjwtkey")
 
 	authHandler := handler.NewAuthHandler(otpService)
 	userHandler := handler.NewUserHandler(userRepo)
 
-	// Routes
-	api := r.Group("/api")
+	r.POST("/auth/request-otp", authHandler.RequestOTP)
+	r.POST("/auth/validate-otp", authHandler.ValidateOTP)
 
-	api.POST("/auth/request-otp", authHandler.RequestOTP)
-	api.POST("/auth/validate-otp", authHandler.ValidateOTP)
-
-	api.GET("/users/:phone", userHandler.GetUser)
-	api.GET("/users", userHandler.ListUsers)
+	// گروه روت‌های محافظت شده با JWT
+	authGroup := r.Group("/")
+	authGroup.Use(middleware.JWTAuthMiddleware([]byte("mysecretjwtkey")))
+	{
+		authGroup.GET("/profile", userHandler.GetProfile)
+	}
 
 	r.Run(":8080")
 }

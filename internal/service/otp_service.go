@@ -12,7 +12,8 @@ import (
 )
 
 var (
-	ErrRateLimited = errors.New("too many OTP requests, please wait")
+	ErrRateLimited  = errors.New("too many OTP requests, please wait")
+	ErrInvalidToken = errors.New("invalid token")
 )
 
 type OtpService struct {
