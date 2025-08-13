@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresUserRepository struct {
@@ -20,19 +22,25 @@ func (r *PostgresUserRepository) GetByPhone(phone string) (*User, error) {
 	err := r.pool.QueryRow(context.Background(),
 		"SELECT phone, registration_date FROM users WHERE phone=$1", phone).
 		Scan(&user.Phone, &user.RegistrationDate)
+
 	if err != nil {
+		// اگر ردیف پیدا نشد، خطای استاندارد repository.ErrUserNotFound را برگردان
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
 		return nil, err
 	}
 	return &user, nil
 }
 
 func (r *PostgresUserRepository) Create(phone string) (*User, error) {
+	now := time.Now()
 	_, err := r.pool.Exec(context.Background(),
-		"INSERT INTO users (phone, registration_date) VALUES ($1, $2)", phone, time.Now())
+		"INSERT INTO users (phone, registration_date) VALUES ($1, $2)", phone, now)
 	if err != nil {
 		return nil, err
 	}
-	return r.GetByPhone(phone)
+	return &User{Phone: phone, RegistrationDate: now}, nil
 }
 
 func (r *PostgresUserRepository) List(offset, limit int, search string) ([]User, error) {
@@ -62,7 +70,7 @@ func (r *PostgresUserRepository) UpdatePhone(oldPhone string, newPhone string) e
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("no user updated")
+		return ErrUserNotFound
 	}
 	return nil
 }
@@ -74,7 +82,7 @@ func (r *PostgresUserRepository) Delete(phone string) error {
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("no user deleted")
+		return ErrUserNotFound
 	}
 	return nil
 }

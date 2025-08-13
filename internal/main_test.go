@@ -22,6 +22,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// توجه: مقدار secretKey باید با main.go یکی باشد
+const secretKey = "mysecretjwtkey"
+
 func setupRouterWithPostgres(t *testing.T) *gin.Engine {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -35,15 +38,14 @@ func setupRouterWithPostgres(t *testing.T) *gin.Engine {
 	require.NoError(t, err, "failed to connect to Postgres")
 
 	userRepo := repository.NewPostgresUserRepository(pool)
-	cache := cache.NewInMemoryCache()
-	secretKey := "secretKey"
 
+	r := gin.Default()
+
+	cache := cache.NewInMemoryCache()
 	otpService := service.NewOtpService(cache, userRepo, secretKey)
 
 	authHandler := handler.NewAuthHandler(otpService)
 	userHandler := handler.NewUserHandler(userRepo)
-
-	r := gin.Default()
 
 	r.POST("/auth/request-otp", authHandler.RequestOTP)
 	r.POST("/auth/validate-otp", authHandler.ValidateOTP)
@@ -74,6 +76,8 @@ func TestEndToEndPostgres(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &otpResp)
 	require.NoError(t, err)
 	otp := otpResp["otp"]
+	// لاگ OTP برای تطبیق با لاگ سرور
+	t.Logf("Test received OTP: %s", otp)
 	require.NotEmpty(t, otp)
 
 	// 2. Validate OTP → Get token
@@ -82,7 +86,11 @@ func TestEndToEndPostgres(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
+
+	// اگر وضعیت موفق نبود، بدنه را چاپ کن تا دلیل دقیق را ببینی
+	if w.Code != http.StatusOK {
+		t.Fatalf("validate-otp failed: status=%d body=%s", w.Code, w.Body.String())
+	}
 
 	var valResp map[string]string
 	err = json.Unmarshal(w.Body.Bytes(), &valResp)
