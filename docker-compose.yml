@@ -1,29 +1,51 @@
-version: "3.9"
+version: "3.8"
 
 services:
   db:
-    image: postgres:16
-    container_name: user-go-db
+    image: postgres:15
     environment:
       POSTGRES_USER: usergolang
       POSTGRES_PASSWORD: admin1234
       POSTGRES_DB: userdb
     ports:
       - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U usergolang -d userdb"]
+      interval: 2s
       timeout: 5s
-      retries: 5
+      retries: 30
+
 
   app:
-    build: .
-    container_name: user-go-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgres://usergolang:admin1234@db:5432/userdb?sslmode=disable
+      - DB_HOST=db
+      - DB_PORT=5432
     depends_on:
       db:
         condition: service_healthy
+    ports:
+      - "8080:8080"
+    tty: true
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
     environment:
-      DATABASE_URL: postgres://usergolang:admin1234@db:5432/userdb?sslmode=disable
-    command: ["go", "test", "./..."]
-    volumes:
-      - .:/app
+      - DATABASE_URL=postgres://usergolang:admin1234@db:5432/userdb?sslmode=disable
+      - DB_HOST=db
+      - DB_PORT=5432
+      - POSTGRES_USER=usergolang
+    depends_on:
+      db:
+        condition: service_healthy
+    tty: true
+
+volumes:
+  pgdata:

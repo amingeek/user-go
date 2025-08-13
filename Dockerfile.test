@@ -1,0 +1,24 @@
+# Dockerfile.test
+FROM golang:1.20-bullseye
+
+# نیازمند pg_isready هستیم برای چک کردن آماده بودن postgres
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# فقط ماژول‌ها رو اول دانلود می‌کنیم تا کش بهتر کار کنه
+COPY go.mod go.sum ./
+RUN go mod download
+
+# حالا کل سورس رو کپی کن
+COPY . .
+
+# پیش‌فرض: از متغیرهای محیطی استفاده می‌کنیم
+# این دستور منتظر می‌مونه تا دیتابیس بالا بیاد سپس تست‌ها رو اجرا می‌کنه
+CMD sh -c '\
+  echo "Waiting for Postgres at $DB_HOST:$DB_PORT ..."; \
+  until pg_isready -h "${DB_HOST:-db}" -p "${DB_PORT:-5432}" -U "${POSTGRES_USER:-test}"; do \
+    sleep 1; \
+  done; \
+  echo "Postgres is ready — running tests"; \
+  go test ./...'
