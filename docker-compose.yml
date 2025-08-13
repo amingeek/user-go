@@ -1,25 +1,25 @@
-version: "3.8"
-services:
-  db:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: usergolang
-      POSTGRES_PASSWORD: mypassword
-      POSTGRES_DB: userdb
-    volumes:
-      - ./migrations:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5432:5432"
+version: '3.8'
 
+services:
   app:
     build: .
-    depends_on:
-      - db
-    environment:
-      DATABASE_URL: postgres://usergolang:admin1234@db:5432/userdb?sslmode=disable
-      JWT_SECRET: secretKey
-      GIN_MODE: release
     ports:
       - "8080:8080"
-    restart: on-failure
+    environment:
+      - DATABASE_URL=postgres://usergolang:admin1234@db:5432/userdb?sslmode=disable
+    depends_on:
+      - db
+    command: ["./main"]
+
+  db:
+    image: postgres:13-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=usergolang
+      - POSTGRES_PASSWORD=admin1234
+      - POSTGRES_DB=userdb
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:

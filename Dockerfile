@@ -1,20 +1,23 @@
-# Builder
-FROM golang:1.23-alpine AS builder
+# Stage 1: Build the Go application
+FROM golang:1.21-alpine AS builder
+
 WORKDIR /app
 
-# دانلود ماژول‌ها
 COPY go.mod go.sum ./
-RUN go env -w GOPROXY=https://proxy.golang.org,direct \
- && go mod download
+RUN go mod download
 
-# کپی سورس و ساخت باینری
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/user-go main.go
 
-# Runtime
-FROM alpine:3.18
-RUN apk add --no-cache ca-certificates
-COPY --from=builder /usr/local/bin/user-go /usr/local/bin/user-go
+RUN go build -o main ./cmd/main.go
+
+# Stage 2: Create a minimal image
+FROM alpine:latest
+
+WORKDIR /root/
+
+# Copy the compiled binary from the builder stage
+COPY --from=builder /app/main .
 
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/user-go"]
+
+CMD ["./main"]
