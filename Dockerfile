@@ -1,36 +1,20 @@
-# Stage 1: Build the application
-FROM golang:1.21-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache git build-base
-
+# Builder
+FROM golang:1.23-alpine AS builder
 WORKDIR /app
 
-# Copy go module files first for better caching
+# دانلود ماژول‌ها
 COPY go.mod go.sum ./
+RUN go env -w GOPROXY=https://proxy.golang.org,direct \
+ && go mod download
 
-# Download dependencies
-RUN go mod download
-
-# Copy source code
+# کپی سورس و ساخت باینری
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /usr/local/bin/user-go main.go
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o user-go ./cmd/main.go
-
-# Stage 2: Create a minimal production image
-FROM alpine:latest
-
-RUN apk --no-cache add ca-certificates tzdata
-
-WORKDIR /app
-
-# Copy built binary
-COPY --from=builder /app/user-go .
-
-# Copy migrations
-COPY --from=builder /app/migrations ./migrations
+# Runtime
+FROM alpine:3.18
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /usr/local/bin/user-go /usr/local/bin/user-go
 
 EXPOSE 8080
-
-CMD ["./user-go"]
+ENTRYPOINT ["/usr/local/bin/user-go"]
