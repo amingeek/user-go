@@ -21,6 +21,12 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable is not set")
 	}
 
+	secretKey := os.Getenv("JWT_SECRET")
+	if secretKey == "" {
+		// fallback برای توسعه محلی — در production حتماً مقداردهی کن
+		secretKey = "mysecretjwtkey"
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -32,9 +38,6 @@ func main() {
 
 	userRepo := repository.NewPostgresUserRepository(pool)
 	cache := cache.NewInMemoryCache()
-
-	secretKey := "secretKey"
-
 	otpService := service.NewOtpService(cache, userRepo, secretKey)
 
 	authHandler := handler.NewAuthHandler(otpService)
@@ -42,9 +45,11 @@ func main() {
 
 	r := gin.Default()
 
+	// Public routes
 	r.POST("/auth/request-otp", authHandler.RequestOTP)
 	r.POST("/auth/validate-otp", authHandler.ValidateOTP)
 
+	// Protected routes (با JWT middleware)
 	authGroup := r.Group("/")
 	authGroup.Use(middleware.JWTAuthMiddleware([]byte(secretKey)))
 	{
@@ -56,5 +61,7 @@ func main() {
 	}
 
 	log.Println("Server is running on :8080")
-	r.Run(":8080")
+	if err := r.Run(":8080"); err != nil {
+		log.Fatalf("failed to run server: %v", err)
+	}
 }

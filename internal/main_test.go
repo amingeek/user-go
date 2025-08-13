@@ -22,8 +22,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// توجه: مقدار secretKey باید با main.go یکی باشد
-const secretKey = "mysecretjwtkey"
+// secretKey باید با main.go هماهنگ باشد یا از env خوانده شود
+var secretKey = func() string {
+	if s := os.Getenv("JWT_SECRET"); s != "" {
+		return s
+	}
+	return "mysecretjwtkey"
+}()
 
 func setupRouterWithPostgres(t *testing.T) *gin.Engine {
 	dsn := os.Getenv("DATABASE_URL")

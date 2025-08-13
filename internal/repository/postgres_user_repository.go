@@ -24,7 +24,7 @@ func (r *PostgresUserRepository) GetByPhone(phone string) (*User, error) {
 		Scan(&user.Phone, &user.RegistrationDate)
 
 	if err != nil {
-		// اگر ردیف پیدا نشد، خطای استاندارد repository.ErrUserNotFound را برگردان
+		// اگر ردیف پیدا نشد، ارور استاندارد repository.ErrUserNotFound را بازگردان
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
 		}
